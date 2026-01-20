@@ -24,7 +24,7 @@
 # List of Figures
 
 # Revision
-| Rev |     Date    |       Author       | Change Description |      
+| Rev |     Date    |       Author       | Change Description |
 |:---:|:-----------:|:------------------:|--------------------|
 | 1 | Aug-28 2020 | Ngoc Do, Eswaran Baskaran (Arista Networks) | Initial Version |
 | 1.1 | Sep-1 2020 | Ngoc Do, Eswaran Baskaran (Arista Networks) | Add hotswap handling |
@@ -33,15 +33,18 @@
 | 3 | Jun-3 2022 | Cheryl Sanchez, Jie Feng (Arista Networks) | Update on fabric link monitoring |
 | 3.1 | Mar-30 2023 | Jie Feng (Arista Networks) | Update Overview, SAI API and Configuration and management section |
 | 3.2 | May-01 2023 | Jie Feng (Arista Networks) | Update Counter tables information |
+| 3.3 | Oct-31 2023 | Jie Feng (Arista Networks) | Update clear fabric counter commands |
+| 3.4 | May-05 2024 | Jie Feng (Arista Networks) | Update CLI |
+| 3.5 | Aug-12 2024 | Jie Feng (Arista Networks) | Update fabric link monitoring behavior on link down |
 
 # Scope
 
 This document covers:
- 
-- Bring up of fabric ports in a VOQ chassis.
-- Monitoring the fabric ports in forwarding and fabric chips. 
 
-This document builds on top of the VOQ chassis architecture discussed [here](https://github.com/sonic-net/SONiC/blob/master/doc/voq/architecture.md) and the multi-ASIC architecture discussed [here](https://github.com/sonic-net/SONiC/blob/2f320430c8199132c686c06b5431ab93a86fb98f/doc/multi_asic/SONiC_multi_asic_hld.md). 
+- Bring up of fabric ports in a VOQ chassis.
+- Monitoring the fabric ports in forwarding and fabric chips.
+
+This document builds on top of the VOQ chassis architecture discussed [here](https://github.com/sonic-net/SONiC/blob/master/doc/voq/architecture.md) and the multi-ASIC architecture discussed [here](https://github.com/sonic-net/SONiC/blob/2f320430c8199132c686c06b5431ab93a86fb98f/doc/multi_asic/SONiC_multi_asic_hld.md).
 
 # Definitions/Abbreviations
 
@@ -49,7 +52,7 @@ This document builds on top of the VOQ chassis architecture discussed [here](htt
 |------|--------------------|--------------------------------|
 | SSI | Supervisor SONiC Instance | SONiC OS instance on a central supervisor module that controls a cluster of forwarding instances and the interconnection fabric. |
 | NPU | Network Processing Unit | Refers to the forwarding engine on a device that is responsible for packet forwarding. |
-| ASIC | Application Specific Integrated Circuit | In addition to NPUs, also includes fabric chips that could forward packets or cells. | 
+| ASIC | Application Specific Integrated Circuit | In addition to NPUs, also includes fabric chips that could forward packets or cells. |
 | cell | Fabric Data Units | The data units that traverse a cell-based chassis fabric. |
 
 # Overview
@@ -58,12 +61,12 @@ This document provides an overview of the SONiC support for fabric ports that ar
 
 # 1 Requirements
 
-Fabric ports are used in systems in which there are multiple forwarding ASICs are required to be connected. Traffic passes from one front panel port in a forwarding ASIC over a fabric network to one or multiple front panel ports on one or other ASICs. The fabric network is formed using fabric ASICs. Fabric links on the fabric network connect fabric ports on forwarding ASICs to fabric ports on fabric ASICs. 
+Fabric ports are used in systems in which there are multiple forwarding ASICs are required to be connected. Traffic passes from one front panel port in a forwarding ASIC over a fabric network to one or multiple front panel ports on one or other ASICs. The fabric network is formed using fabric ASICs. Fabric links on the fabric network connect fabric ports on forwarding ASICs to fabric ports on fabric ASICs.
 
 High level requirements:
 
-- SONiC needs to form a fabric network among forwarding ASICs, monitor and manage it. Monitoring could include link statistics, error monitoring and reporting, etc.  
-- SONiC should be able to initialize fabric asics and manage them similar to how forwarding ASICs are managed - using syncd and sairedis calls. 
+- SONiC needs to form a fabric network among forwarding ASICs, monitor and manage it. Monitoring could include link statistics, error monitoring and reporting, etc.
+- SONiC should be able to initialize fabric asics and manage them similar to how forwarding ASICs are managed - using syncd and sairedis calls.
 
 # 2 Design
 
@@ -77,7 +80,7 @@ For each fabric ASIC, there will be:
 - Swss container
 - Syncd container
 
-Unlike forwarding ASICs, fabric ASICs do not have any front panel ports, but only fabric ports. So all the front panel port related containers like lldp, teamd and bgpd can be disabled for fabric ASICs. 
+Unlike forwarding ASICs, fabric ASICs do not have any front panel ports, but only fabric ports. So all the front panel port related containers like lldp, teamd and bgpd can be disabled for fabric ASICs.
 
 ## 2.2 Database Schemas
 
@@ -90,7 +93,7 @@ DEVICE_METADATA|localhost: {
 
 Each fabric ASIC must be assigned a unique switch_id. The SAI VOQ specification recommends that this number be assigned to be different than the switch_id assigned to the forwarding ASICs in the chassis.
 
-Fabric port is numbered as the chip fabric port number, the its status will be polled periodically and stored in table STATE_DB|FABRIC_PORT_TABLE. Typically, fabric port status about a fabric port includes:
+A fabric port is numbered as the chip fabric port number, its status will be polled periodically and stored in table STATE_DB|FABRIC_PORT_TABLE. Typically, fabric port status about a fabric port includes:
 
 - Status: Up or down
 - If port is down, we may have some more information indicating reason e.g. CRC or misaligned
@@ -134,7 +137,7 @@ Note that Linecard Sonic instances will also have STATE_DB|FABRIC_PORT_TABLE as 
 
 ## 2.3 System Initialization
 
-As part of multi-ASIC support, /etc/sonic/generated_services.conf contains the list of services which will be created for each asic when the system boots up. This is read by systemd-sonic-generator to generate the service files for each container that needs to run. 
+As part of multi-ASIC support, /etc/sonic/generated_services.conf contains the list of services which will be created for each asic when the system boots up. This is read by systemd-sonic-generator to generate the service files for each container that needs to run.
 
 Since the fabric ASIC doesn’t need lldp, bgpd and teamd containers to run, systemd-sonic-generator will be modified to not start these services for the fabric ASICs. A per-platform file called `asic_disabled_services` can list the services that are not needed for a given ASIC and systemd-sonic-generator will not generate the service files for these containers. For example,
 ```
@@ -152,7 +155,7 @@ PMON will be responsible for detecting card presence and hotswap events using th
 
 ## 2.5 Orchagent
 
-Orchagent creates the switch using the SAI API similar to creating the switch for a forwarding ASIC, except that the switch type will be fabric. When the ASIC is initialized, all the fabric ports are initialized by default. The fabric ports are a subtype of SAI Port object and it can be obtained by getting all the fabric port objects from SAI. Since there are no front panel ports on a fabric ASIC, port_config.ini will be empty and portsyncd will not run. 
+Orchagent creates the switch using the SAI API similar to creating the switch for a forwarding ASIC, except that the switch type will be fabric. When the ASIC is initialized, all the fabric ports are initialized by default. The fabric ports are a subtype of SAI Port object and it can be obtained by getting all the fabric port objects from SAI. Since there are no front panel ports on a fabric ASIC, port_config.ini will be empty and portsyncd will not run.
 
 On fabric ASICs, OrchDaemon will only monitor and manage fabric ports. It will not maintain cpu port and front panel port related ochres, such as PortsOrch, IntfsOrch, NeighborOrch, VnetOrch, QosOrch, TunnelOrch, and etc. To simplify the change, we will just create FabricOrchDaemon inheriting OrchDaemon for fabric ASICs and this will only run FabricPortsOrch, the module responsible for managing fabric ports.
 
@@ -206,11 +209,11 @@ The design of fabric link monitor is intentionally scoped to use local component
 
 ### 2.8.1 Monitor Fabric Link Status
 
-Unhealthy fabric links may lead to traffic drops. Fabric link monitoring is an important tool to minimize traffic loss. The fabric link monitor algorithm monitors fabric link status and isolates the link if one or more criteria are true. By isolating a fabric link, the link is still up in the physical layer, but is taken out of service and does not distribute traffic. This feature is needed on both fabric ASICs and forwarding ASICs.  
+Unhealthy fabric links may lead to traffic drops. Fabric link monitoring is an important tool to minimize traffic loss. The fabric link monitor algorithm monitors fabric link status and isolates the link if one or more criteria are true. By isolating a fabric link, the link is still up in the physical layer, but is taken out of service and does not distribute traffic. This feature is needed on both fabric ASICs and forwarding ASICs.
 
 #### 2.8.1.1 Fabric link monitoring criteria
 
-The fabric link monitoring algorithm checks two type of errors on a link: crc errors and uncorrectable errors. 
+The fabric link monitoring algorithm checks two type of errors on a link: crc errors and uncorrectable errors.
 
 The criteria can be extended to include checking other errors later.
 
@@ -218,7 +221,10 @@ The criteria can be extended to include checking other errors later.
 
 Instead of reacting to the counter changes, Orchagent adds a new poller and periodically polls status of all fabric links. By default, the total number of received cells, cells with crc errors, cells with uncorrectable errors are fetched from all serdes links periodically and the error rates are calculated using these numbers. If any one of the error rates is above the threshold for a number of consecutive polls, the link is identified as an unhealthy link. Then the link is automatically isolated to not distribute traffic.
 
-#### 2.8.1.1 Cli commands
+When a fabric port goes down and then comes back up, whether due to a peer end card power cycle or peer end Orchange restart, the previous monitoring status and decision will be cleared unless the link is shutdown manually by the user via CLI.
+
+
+#### 2.8.1.3 Cli commands
 
 Several commands will be added to set fabric link monitor config parameters.
 ```
@@ -234,7 +240,7 @@ If more than #crcCells out of #rxCells received cells seen with error, the fabri
 ```
 > config fabric port monitor poll threshold isolation <#polls>
 ```
-The above command can be used to set the number of consecutive polls in which the threshold needs to be detected to isolate a link. 
+The above command can be used to set the number of consecutive polls in which the threshold needs to be detected to isolate a link.
 
 ```
 > config fabric port monitor poll threshold recovery <#polls>
@@ -249,8 +255,26 @@ The above command sets the number of consecutive polls in which no error is dete
 > config fabric port unisolate [port_id]
 ```
 
-Besides the fabric link monitoring algorithm, the above two commands are added. The commands can be used to manually isolate and unisolate a fabric link ( i.e. take the link out of service and put the link back into service ). The two commands can help us debug on the system as well as force isolate a fabric link. 
 
+```
+> config fabric port unisolate [port_id] --force
+```
+
+Besides the fabric link monitoring algorithm, the above two commands are added. The commands can be used to manually isolate and unisolate a fabric link ( i.e. take the link out of service and put the link back into service ). The two commands can help us debug on the system as well as a force option to unisolate a fabric link.
+
+
+An additional show command is also added to show the fabric link isolation status of a system.
+
+```
+> show fabric isolation
+asic0
+  Local Link    Auto Isolated    Manual Isolated    Isolated
+------------  ---------------  -----------------  ----------
+           0                0                  1           1
+           1                0                  0           0
+           2                1                  0           1
+....
+```
 
 ### 2.8.2 Monitor Fabric Capacity
 
@@ -259,7 +283,7 @@ When the fabric link monitoring feature is enabled, fabric links may not be oper
 #### 2.8.2.1 Cli command
 
 ```
-> config fabric monitor capacity threshold <50-100>
+> config fabric monitor capacity threshold <5-100>
 ```
 The above command is used to configure a capacity threshold to trigger alerts when total fabric link capacity goes below it.
 
@@ -269,11 +293,11 @@ A show command is added to display the fabric capacity on a system.
 > show fabric monitor capacity
 Monitored fabric capacity threshold: 90%
 
-ASIC     Operating   Total #      %       Last Event   Last Time  
+ASIC     Operating   Total #      %       Last Event   Last Time
          Links       of Links
 -----    ------      --------     ----    ----------   ---------
 0        110         112          98      None          Never
-1        112         112          100     None          Never  
+1        112         112          100     None          Never
 ....
 ```
 
@@ -290,15 +314,14 @@ Monitoring traffic on fabric links is another important tool to diagnose fabric 
 The following proposed CLI is used to show the traffic among fabric links on both fabric ASICs and forwarding ASICs.
 
 ```
-> show fabric counters rate mbps
+> show fabric counters rate
 
- Asic     Link    RX         TX
-          ID
- –------  -----   ---------  ----------
- 0         1      0          36113
- ....
- 0        19      0          36107  
- 0        20      0          36110
+  ASIC    Link ID    Rx Data Mbps    Tx Data Mbps
+------  ---------  --------------  --------------
+ asic0          0               0            19.8
+ asic0          1               0            19.8
+ asic0          2               0            39.8
+ asic0          3               0            39.8
  ....
 ```
 
@@ -367,22 +390,31 @@ module sonic-fabric-port{
                 }
 
                 leaf isolateStatus {
+                    description "Isolation status of a fabric port";
+                    type stypes:boolean_type;
+                    default "False";
+                }
+
+                leaf alias {
+                    description "Alias of a fabric port";
                     type string {
-                        pattern "False|True";
+                        length 1..128;
                     }
                 }
 
-               leaf alias {
-                   type string {
-                       length 1..128;
-                   }
-               }
+                leaf lanes {
+                    description "Lanes of a fabric port";
+                    mandatory true;
+                    type string {
+                        length 1..128;
+                    }
+                }
 
-               leaf lanes {
-                   type string {
-                       length 1..128;
-                   }
-               }
+                leaf forceUnisolateStatus {
+                    description "Force unisolate status of a fabric port";
+                    type uint32;
+                    default 0;
+                }
             } /* end of list FABRIC_PORT_LIST */
         } /* end of container FABRIC_PORT */
     } /* end of container sonic-fabric-port */
@@ -406,22 +438,41 @@ module sonic-fabric-monitor{
                 leaf monErrThreshCrcCells {
                     type uint32;
                     default 1;
+                    description "The number of cells with errors.";
                 }
 
                 leaf monErrThreshRxCells {
                     type uint32;
                     default 61035156;
+                    description "The number of cells received. If more than monErrThreshCrcCells out of monErrThreshRxCells seen with errors, the fabric port needs to be isolated";
                 }
 
                 leaf monPollThreshIsolation {
-                    type uint32;
+                    type uint8;
                     default 1;
+                    description "Consecutive polls with higher error rate for isolation.";
                 }
 
                 leaf monPollThreshRecovery {
-                    type uint32;
+                    type uint8;
                     default 8;
+                    description "Consecutive polls with lesser error rate for inclusion.";
                 }
+
+                leaf monCapacityThreshWarn {
+                    type uint8;
+                    default 10;
+                    description "Percentage of up fabric links.";
+                }
+
+                leaf monState {
+                    description "Configuration to set fabric link monitoring state: enable/disable";
+                    type string {
+                        length 1..32;
+                        pattern "enable|disable";
+                    }
+                }
+
             } /* end of container FABRIC_MONITOR_DATA */
         } /* end of container FABRIC_MONITOR */
     } /* end of container sonic-fabric-monitor */
@@ -444,6 +495,18 @@ Command to display fabric counters queue.
 
 ```
 > show fabric counters queue
+```
+
+Command to clear fabric counters port.
+
+```
+sonic-clear fabriccountersport
+```
+
+Command to clear fabric counters queue.
+
+```
+sonic-clear fabriccountersqueue
 ```
 
 Command to display fabric status.
@@ -509,11 +572,11 @@ The existing warmboot/fastboot feature is not affected due to this design.
 
 # 6 Testing
 
-Fabric port testing will rely on sonic-mgmt tests that can run on chassis hardware. 
+Fabric port testing will rely on sonic-mgmt tests that can run on chassis hardware.
 
 - Test fabric port mapping: To verify the fabric mapping, we can inspect the remote switch ID that are saved in the STATE_DB and match that with the known chassis architecture. More comprehensive information about this testing can be found in the Chassis Fabric Test Plan document, which is available at testplan/Chassis-fabric-test-plan.md.
 
-- Test traffic and counters: Send traffic through the chassis and verify traffic going through fabric ports via counters. 
+- Test traffic and counters: Send traffic through the chassis and verify traffic going through fabric ports via counters.
 
 - Test fabric port monitoring:
   * Use the CLI to isolate/unisolate fabric ports, and verify whether the corresponding STATE_DB entries are updated.
@@ -522,7 +585,7 @@ Fabric port testing will rely on sonic-mgmt tests that can run on chassis hardwa
 
 # 7 Open/Action items - if any
 
-- In this proposal, all fabric ports on fabric ASICs or forwarding ASICs that join to form the fabric network will be enabled even when there are no peer ports available. We could provide a config model for the platforms to express the expected fabric connectivity and turn off unnecessary fabric ports. 
+- In this proposal, all fabric ports on fabric ASICs or forwarding ASICs that join to form the fabric network will be enabled even when there are no peer ports available. We could provide a config model for the platforms to express the expected fabric connectivity and turn off unnecessary fabric ports.
 
 - Fabric ports that do not have a peer port will show up as a ‘down’ port. Fabric ports that do have a peer port could also go ‘down’ and there is no current way to differentiate this from a fabric port that does not have a peer port. This can be detected if the config model can express the expected fabric connectivity.
 
